@@ -15,7 +15,7 @@ import (
 type History struct {
 	ItemsSearch map[string]struct{} `json:"search"`
 	Items       []string            `json:"items"`
-	NewActivity []*WatchActivity `json:"-"`
+	NewActivity []*WatchActivity    `json:"-"`
 }
 
 // NewHistory creates a new History instance, and loads the initial
