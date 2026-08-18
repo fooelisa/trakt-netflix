@@ -17,7 +17,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ghcr.io/nivl/trakt-netflix
+  IMAGE_NAME: ghcr.io/fooelisa/trakt-netflix
 
 jobs:
   prepare-env:
@@ -191,6 +191,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
 
   # This job is what github action will check to see if a PR is ready to
   # be merged.
