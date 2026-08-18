@@ -18,6 +18,7 @@ func TestWatchActivitySearchTerms(t *testing.T) {
 		{
 			name: "movie",
 			activity: WatchActivity{
+				Raw:         "",
 				Date:        "",
 				Title:       "Pain Hustlers",
 				EpisodeName: "",
@@ -30,6 +31,7 @@ func TestWatchActivitySearchTerms(t *testing.T) {
 		{
 			name: "episode",
 			activity: WatchActivity{
+				Raw:         "",
 				Date:        "",
 				Title:       "Goedam",
 				EpisodeName: "Threshold",

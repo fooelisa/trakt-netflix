@@ -259,6 +259,7 @@ func TestFindEpisodeInShowSeasons(t *testing.T) {
 		{
 			name: "prefers requested season when episode titles repeat",
 			activity: &netflix.WatchActivity{
+				Raw:         "",
 				Date:        "",
 				Title:       "Search Party",
 				EpisodeName: "Episode 1",
@@ -287,6 +288,7 @@ func TestFindEpisodeInShowSeasons(t *testing.T) {
 		{
 			name: "season zero ignores season but still accepts a unique best title match",
 			activity: &netflix.WatchActivity{
+				Raw:         "",
 				Date:        "",
 				Title:       "Arrested Development",
 				EpisodeName: "Season 4 Remix: A Couple-A New Starts",
@@ -315,6 +317,7 @@ func TestFindEpisodeInShowSeasons(t *testing.T) {
 		{
 			name: "returns ambiguous when season is unknown and title repeats",
 			activity: &netflix.WatchActivity{
+				Raw:         "",
 				Date:        "",
 				Title:       "Some Show",
 				EpisodeName: "Episode 1",

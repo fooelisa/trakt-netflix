@@ -23,7 +23,7 @@ func season(number int, episodeNumbers ...int) trakt.Season {
 
 func showItem(title string, seasonNum, number, seasonEpisodeCount int) resolved {
 	return resolved{
-		activity:           &netflix.WatchActivity{Title: title, EpisodeName: "", IsShow: true, Season: seasonNum, Date: ""},
+		activity:           &netflix.WatchActivity{Raw: title, Title: title, EpisodeName: "", IsShow: true, Season: seasonNum, Date: ""},
 		isShow:             true,
 		ids:                trakt.IDs{Trakt: 0, Slug: nil, IMDB: nil, TMDB: nil, TVDB: nil},
 		season:             seasonNum,

@@ -200,6 +200,10 @@ func TestParseTitle(t *testing.T) {
 			t.Parallel()
 
 			res := netflix.ParseTitle(t.Context(), tc.title, nil)
+			// Raw is always the untouched input, whatever the parse does to
+			// Title, so it is asserted here instead of in every case.
+			assert.Equal(t, tc.title, res.Raw)
+			tc.expected.Raw = tc.title
 			assert.Equal(t, tc.expected, res)
 		})
 	}
