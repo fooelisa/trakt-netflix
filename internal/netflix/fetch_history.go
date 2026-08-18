@@ -15,6 +15,12 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+// activityRow is a single row of the Netflix viewing-activity table.
+type activityRow struct {
+	title string
+	date  string
+}
+
 // UpdateHistory Updates the viewing history from Netflix
 func (c *Client) UpdateHistory(ctx context.Context, reporter o11y.Reporter) (err error) {
 	slog.InfoContext(ctx, "Checking for new watched medias on Netflix")
@@ -39,16 +45,25 @@ func (c *Client) UpdateHistory(ctx context.Context, reporter o11y.Reporter) (err
 		return fmt.Errorf("parsing HTML: %w", err)
 	}
 
-	newList := make([]string, 0, HistorySize)
+	// Each row is:
+	//   <li class="retableRow">
+	//     <div class="col date">8/18/26</div>
+	//     <div class="col title"><a href="/title/…">…</a></div>
+	// The date column is the only record of WHEN something was watched.
+	// Without it every item would be stamped with the sync time instead.
+	newList := make([]activityRow, 0, HistorySize)
 	for _, s := range doc.Find(".retableRow").EachIter() {
-		newList = append(newList, s.Find(".title").Find("a").Text())
+		newList = append(newList, activityRow{
+			title: s.Find(".title").Find("a").Text(),
+			date:  strings.TrimSpace(s.Find(".date").Text()),
+		})
 	}
 
 	// we reverse the list to have the oldest entries first, and
 	// newest last
 	slices.Reverse(newList)
-	for _, title := range newList {
-		c.History.Push(ctx, cleanupString(title), reporter)
+	for _, row := range newList {
+		c.History.Push(ctx, cleanupString(row.title), row.date, reporter)
 	}
 
 	return nil

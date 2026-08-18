@@ -15,7 +15,11 @@ import (
 type History struct {
 	ItemsSearch map[string]struct{} `json:"search"`
 	Items       []string            `json:"items"`
-	NewActivity []*WatchActivity    `json:"-"`
+	// Pending holds episodes seen on Netflix but deliberately not reported
+	// yet, because nothing has superseded them. Persisted so a hold survives
+	// restarts - losing it would release everything on the next tick.
+	Pending     []Pending        `json:"pending"`
+	NewActivity []*WatchActivity `json:"-"`
 }
 
 // NewHistory creates a new History instance, and loads the initial
@@ -24,6 +28,7 @@ func NewHistory() (*History, error) {
 	h := &History{
 		ItemsSearch: make(map[string]struct{}),
 		Items:       []string{},
+		Pending:     []Pending{},
 		NewActivity: []*WatchActivity{},
 	}
 	err := h.Load()
@@ -39,8 +44,9 @@ func (h *History) Has(item string) bool {
 	return ok
 }
 
-// Push adds a new item to the history.
-func (h *History) Push(ctx context.Context, item string, r o11y.Reporter) {
+// Push adds a new item to the history. watchedOn is the raw date string
+// from the Netflix viewing-activity table (see ParseNetflixDate).
+func (h *History) Push(ctx context.Context, item, watchedOn string, r o11y.Reporter) {
 	if h.Has(item) {
 		return
 	}
@@ -52,7 +58,9 @@ func (h *History) Push(ctx context.Context, item string, r o11y.Reporter) {
 
 	h.Items = append(h.Items, item)
 	h.ItemsSearch[item] = struct{}{}
-	h.NewActivity = append(h.NewActivity, ParseTitle(ctx, item, r))
+	activity := ParseTitle(ctx, item, r)
+	activity.Date = watchedOn
+	h.NewActivity = append(h.NewActivity, activity)
 }
 
 // Write saves the history to disk.
