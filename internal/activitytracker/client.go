@@ -228,6 +228,24 @@ func showLookupID(show trakt.Media) string {
 	return strconv.Itoa(show.IDs.Trakt)
 }
 
+// typographicQuotes maps the curly quote characters Trakt uses onto the
+// straight ASCII ones Netflix uses.
+//
+// Ex.
+//
+//	Netflix title: "Let's Marry Harry"      (U+0027 apostrophe)
+//	Trakt title:   "Let’s Marry Harry"      (U+2019 right single quote)
+//
+// Without this every episode of such a show fails to match and is reported
+// as "not found".
+var typographicQuotes = strings.NewReplacer(
+	"\u2018", "'",
+	"\u2019", "'",
+	"\u201c", `"`,
+	"\u201d", `"`,
+	"\u2032", "'",
+)
+
 // Sometime the title don't match due to unicode characters.
 // For example,
 // On Netflix: "Arrested Development: Beef Consomme"
@@ -245,6 +263,11 @@ func showLookupID(show trakt.Media) string {
 func stringMatches(netflixTitle, traktTitle string) bool {
 	// Netflix titles sometimes use "..." to indicate a longer title.
 	titleIsPartial := strings.HasSuffix(netflixTitle, "...") && !strings.HasSuffix(traktTitle, "...")
+
+	// Curly vs straight quotes are the single most common mismatch after
+	// accents, so normalize them before any comparison.
+	netflixTitle = typographicQuotes.Replace(netflixTitle)
+	traktTitle = typographicQuotes.Replace(traktTitle)
 
 	if areEqual(netflixTitle, traktTitle, titleIsPartial) {
 		return true

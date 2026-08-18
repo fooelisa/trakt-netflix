@@ -369,6 +369,24 @@ func TestStringMatches(t *testing.T) {
 		shouldMatch bool
 	}{
 		{
+			name:        "Curly apostrophe in show title",
+			netflix:     "Let's Marry Harry",
+			trakt:       "Let\u2019s Marry Harry",
+			shouldMatch: true,
+		},
+		{
+			name:        "Curly double quotes in episode title",
+			netflix:     `Let's Marry Harry: The "L Word"`,
+			trakt:       "Let\u2019s Marry Harry: The \u201cL Word\u201d",
+			shouldMatch: true,
+		},
+		{
+			name:        "Quote normalization must not make different titles match",
+			netflix:     "Let's Marry Harry",
+			trakt:       "Let\u2019s Marry Larry",
+			shouldMatch: false,
+		},
+		{
 			name:        "Accent",
 			netflix:     "Arrested Development: Beef Consomme",
 			trakt:       "Arrested Development: Beef Consommé",
