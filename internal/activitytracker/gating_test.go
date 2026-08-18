@@ -95,3 +95,21 @@ func TestSeasonKeySeparatesShowsAndSeasons(t *testing.T) {
 	same := showItem("Love Never Lies: Poland", 3, 4, 8)
 	assert.Equal(t, seasonKey(&polandS3), seasonKey(&same), "same show and season must share a key regardless of episode")
 }
+
+// A held item must round-trip through the pending set. Hold and release key
+// on the RAW Netflix string, not on WatchActivity.Title - ParseTitle rewrites
+// Title to just the show name, so every episode of a show would collapse onto
+// one key and holds would never be released.
+func TestHoldKeyIsRawNotShowTitle(t *testing.T) {
+	t.Parallel()
+
+	const rawA = `Let's Marry Harry: Let's Marry Harry: "Kiss & Tell"`
+	const rawB = `Let's Marry Harry: Let's Marry Harry: "The L Word"`
+
+	a := netflix.ParseTitle(t.Context(), rawA, nil)
+	b := netflix.ParseTitle(t.Context(), rawB, nil)
+
+	assert.Equal(t, a.Title, b.Title, "same show, so Title collapses - that is why Raw exists")
+	assert.NotEqual(t, a.Raw, b.Raw, "Raw must stay unique per episode")
+	assert.Equal(t, rawA, a.Raw)
+}

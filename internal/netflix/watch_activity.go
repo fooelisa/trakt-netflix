@@ -6,6 +6,10 @@ import (
 
 // WatchActivity contains the data from Netflix
 type WatchActivity struct {
+	// Raw is the untouched activity string from Netflix. Title is rewritten
+	// by ParseTitle to just the show name, so Raw is the only stable identity
+	// for an individual episode and is what the pending set keys on.
+	Raw         string
 	Date        string
 	Title       string
 	EpisodeName string

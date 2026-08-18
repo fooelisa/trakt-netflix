@@ -20,6 +20,7 @@ var (
 // ParseTitle parses a Netflix title and turns it into a WatchActivity.
 func ParseTitle(ctx context.Context, title string, reporter o11y.Reporter) *WatchActivity {
 	h := &WatchActivity{ //nolint:exhaustruct // The point of this function is to slowly build that object
+		Raw:   title,
 		Title: title,
 		// All shows have their episode names wrapped in quotes.
 		// It doesn't mean that *only* shows have quotes, but it's a good

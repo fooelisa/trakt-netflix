@@ -88,6 +88,7 @@ func (c *Client) candidates(ctx context.Context) []*netflix.WatchActivity {
 	out := make([]*netflix.WatchActivity, 0, len(h.Pending)+len(h.NewActivity))
 	for _, p := range h.Pending {
 		a := netflix.ParseTitle(ctx, p.Title, nil)
+		a.Raw = p.Title
 		a.Date = p.Date
 		out = append(out, a)
 	}
@@ -147,7 +148,7 @@ func (c *Client) MarkAsWatched(ctx context.Context) {
 	for i := range found {
 		r := &found[i]
 		if r.isShow && !r.isFinale() && highest[seasonKey(r)] <= r.number {
-			c.netflixClient.History.Hold(r.activity.Title, r.activity.Date)
+			c.netflixClient.History.Hold(r.activity.Raw, r.activity.Date)
 			held++
 			slog.InfoContext(ctx, "holding until a later episode confirms it was finished",
 				"media", r.activity.String(), "season", r.season, "episode", r.number)
@@ -165,7 +166,7 @@ func (c *Client) MarkAsWatched(ctx context.Context) {
 		} else {
 			medias.Movies = append(medias.Movies, m)
 		}
-		released[r.activity.Title] = struct{}{}
+		released[r.activity.Raw] = struct{}{}
 		c.slackClient.SendMessage(ctx, "Adding to current watchlist batch: "+r.activity.String())
 	}
 

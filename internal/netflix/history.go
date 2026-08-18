@@ -59,6 +59,7 @@ func (h *History) Push(ctx context.Context, item, watchedOn string, r o11y.Repor
 	h.Items = append(h.Items, item)
 	h.ItemsSearch[item] = struct{}{}
 	activity := ParseTitle(ctx, item, r)
+	activity.Raw = item
 	activity.Date = watchedOn
 	h.NewActivity = append(h.NewActivity, activity)
 }
