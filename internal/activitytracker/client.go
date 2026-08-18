@@ -67,98 +67,33 @@ type resolved struct {
 	activity *netflix.WatchActivity
 	isShow   bool
 	ids      trakt.IDs
-	// season/number of the matched episode, 0 for movies
-	season int
-	number int
-	// seasonEpisodeCount is how many episodes Trakt lists for that season.
-	// 0 when unknown, which disables the finale rule for this item.
-	seasonEpisodeCount int
 }
 
-// isFinale reports whether this is the last episode of its season. A finale
-// can never be superseded, so holding it would mean never reporting it.
-func (r *resolved) isFinale() bool {
-	return r.seasonEpisodeCount > 0 && r.number == r.seasonEpisodeCount
-}
-
-// candidates returns everything eligible for reporting this run: items held
-// back on a previous run, plus whatever is new in the Netflix activity.
-func (c *Client) candidates(ctx context.Context) []*netflix.WatchActivity {
-	h := c.netflixClient.History
-	out := make([]*netflix.WatchActivity, 0, len(h.Pending)+len(h.NewActivity))
-	for _, p := range h.Pending {
-		a := netflix.ParseTitle(ctx, p.Title, nil)
-		a.Raw = p.Title
-		a.Date = p.Date
-		out = append(out, a)
-	}
-	out = append(out, h.NewActivity...)
-	return out
-}
-
-// MarkAsWatched reports finished media to Trakt.
+// MarkAsWatched reports everything new in the Netflix viewing activity to
+// Trakt.
 //
-// Netflix logs a title the moment you start it and never records progress, so
-// the newest episode of a show is ambiguous. An episode is only reported once
-// something proves it was finished:
-//
-//   - a LATER episode of the same season was also watched, or
-//   - it is the season finale, which nothing can ever supersede.
-//
-// Anything else is held and re-evaluated on the next run. Movies are reported
-// immediately: there is no equivalent signal for them.
+// Netflix logs a title as soon as you start it and never records how far you
+// got, so an abandoned episode is indistinguishable from a finished one and
+// will be reported as watched. That is a deliberate trade-off for simplicity:
+// the only completion signal Netflix exposes is its GraphQL Continue Watching
+// row, which uses persisted query hashes tied to the frontend build and would
+// break silently on any Netflix deploy.
 func (c *Client) MarkAsWatched(ctx context.Context) {
-	items := c.candidates(ctx)
-	if len(items) == 0 {
-		return
-	}
+	medias := new(trakt.MarkAsWatchedRequest)
+	reported := 0
 
-	found := make([]resolved, 0, len(items))
-	for _, h := range items {
+	for _, h := range c.netflixClient.History.NewActivity {
 		r, err := c.searchMedia(ctx, h)
 		if err != nil {
 			c.slackClient.SendMessage(ctx, "Trakt: Couldn't find: "+h.String()+"\nError: "+err.Error()+"\nPlease add manually.")
 			slog.ErrorContext(ctx, "media search failed", "isShow", h.IsShow, "media", h.String(), "error", err.Error())
 			continue
 		}
-		found = append(found, *r)
-		time.Sleep(100 * time.Millisecond)
-	}
 
-	// Highest episode number seen per show+season across everything we
-	// resolved this run. Only the current batch matters: an episode that
-	// was already reported must itself have been superseded or a finale,
-	// so it cannot be sitting above something still pending.
-	highest := map[string]int{}
-	for i := range found {
-		r := &found[i]
-		if !r.isShow {
-			continue
-		}
-		k := seasonKey(r)
-		if r.number > highest[k] {
-			highest[k] = r.number
-		}
-	}
-
-	medias := new(trakt.MarkAsWatchedRequest)
-	released := map[string]struct{}{}
-	held := 0
-
-	for i := range found {
-		r := &found[i]
-		if r.isShow && !r.isFinale() && highest[seasonKey(r)] <= r.number {
-			c.netflixClient.History.Hold(r.activity.Raw, r.activity.Date)
-			held++
-			slog.InfoContext(ctx, "holding until a later episode confirms it was finished",
-				"media", r.activity.String(), "season", r.season, "episode", r.number)
-			continue
-		}
-
-		watchedAt, fromNetflix := r.activity.WatchedAt()
+		watchedAt, fromNetflix := h.WatchedAt()
 		if !fromNetflix {
 			slog.WarnContext(ctx, "no usable Netflix date, falling back to now",
-				"media", r.activity.String(), "rawDate", r.activity.Date)
+				"media", h.String(), "rawDate", h.Date)
 		}
 		m := trakt.MarkAsWatched{IDs: r.ids, WatchedAt: watchedAt}
 		if r.isShow {
@@ -166,12 +101,14 @@ func (c *Client) MarkAsWatched(ctx context.Context) {
 		} else {
 			medias.Movies = append(medias.Movies, m)
 		}
-		released[r.activity.Raw] = struct{}{}
-		c.slackClient.SendMessage(ctx, "Adding to current watchlist batch: "+r.activity.String())
+		reported++
+		c.slackClient.SendMessage(ctx, "Adding to current watchlist batch: "+h.String())
+
+		time.Sleep(100 * time.Millisecond)
 	}
 
-	slog.InfoContext(ctx, "batch built", "reporting", len(released), "held", held)
-	if len(released) == 0 {
+	slog.InfoContext(ctx, "batch built", "reporting", reported)
+	if reported == 0 {
 		c.netflixClient.History.ClearNewActivity()
 		return
 	}
@@ -182,29 +119,18 @@ func (c *Client) MarkAsWatched(ctx context.Context) {
 		return
 	}
 
-	// Only drop holds once Trakt has actually accepted the batch.
-	c.netflixClient.History.ReleasePending(released)
 	c.slackClient.SendMessage(ctx, "Batch processed successfully")
 	c.netflixClient.History.ClearNewActivity()
-}
-
-// seasonKey groups episodes of the same show and season together.
-func seasonKey(r *resolved) string {
-	return r.activity.Title + "\x00" + strconv.Itoa(r.season)
 }
 
 // searchMedia maps a Netflix movie/episode onto one on Trakt.
 func (c *Client) searchMedia(ctx context.Context, h *netflix.WatchActivity) (*resolved, error) {
 	if h.IsShow {
-		episode, seasonCount, err := c.findEpisode(ctx, h)
+		episode, err := c.findEpisode(ctx, h)
 		if err != nil {
 			return nil, err
 		}
-		return &resolved{
-			activity: h, isShow: true, ids: episode.IDs,
-			season: episode.Season, number: episode.Number,
-			seasonEpisodeCount: seasonCount,
-		}, nil
+		return &resolved{activity: h, isShow: true, ids: episode.IDs}, nil
 	}
 
 	response, err := c.traktClient.Search(ctx, trakt.SearchRequest{
@@ -219,27 +145,21 @@ func (c *Client) searchMedia(ctx context.Context, h *netflix.WatchActivity) (*re
 	for i := range response.Results {
 		r := &response.Results[i]
 		if r.Type == trakt.SearchTypeMovie && stringMatches(r.Movie.Title, h.Title) {
-			return &resolved{
-				activity: h, isShow: false, ids: r.Movie.IDs,
-				season: 0, number: 0, seasonEpisodeCount: 0,
-			}, nil
+			return &resolved{activity: h, isShow: false, ids: r.Movie.IDs}, nil
 		}
 	}
 	return nil, errors.New("not found")
 }
 
-// findEpisode maps a Netflix episode onto a Trakt one, and also reports how
-// many episodes Trakt lists for the matched season. That count is what makes
-// the finale rule possible - without it a season's last episode could never
-// be confirmed and would be held forever.
-func (c *Client) findEpisode(ctx context.Context, h *netflix.WatchActivity) (*trakt.Episode, int, error) {
+// findEpisode maps a Netflix episode onto a Trakt one.
+func (c *Client) findEpisode(ctx context.Context, h *netflix.WatchActivity) (*trakt.Episode, error) {
 	showSearch, err := c.traktClient.Search(ctx, trakt.SearchRequest{
 		Type:  trakt.SearchTypeShow,
 		Query: h.SearchShow(),
 		Show:  "",
 	})
 	if err != nil {
-		return nil, 0, fmt.Errorf("searching Trakt show (show=%q, episode=%q, activity=%s): %w", h.SearchShow(), h.EpisodeName, h.String(), err)
+		return nil, fmt.Errorf("searching Trakt show (show=%q, episode=%q, activity=%s): %w", h.SearchShow(), h.EpisodeName, h.String(), err)
 	}
 
 	lastMatchErr := errors.New("not found")
@@ -253,53 +173,32 @@ func (c *Client) findEpisode(ctx context.Context, h *netflix.WatchActivity) (*tr
 		if h.Season > 0 {
 			episodes, err := c.traktClient.GetSeasonEpisodes(ctx, showID, h.Season)
 			if err != nil {
-				return nil, 0, fmt.Errorf("getting Trakt season episodes (show=%q, season=%d, activity=%s): %w", h.Title, h.Season, h.String(), err)
+				return nil, fmt.Errorf("getting Trakt season episodes (show=%q, season=%d, activity=%s): %w", h.Title, h.Season, h.String(), err)
 			}
 
-			seasons := []trakt.Season{{
+			episode, err := findEpisodeInShowSeasons(h, []trakt.Season{{
 				Number:   h.Season,
 				IDs:      trakt.IDs{Trakt: 0, Slug: nil, IMDB: nil, TMDB: nil, TVDB: nil},
 				Episodes: episodes,
-			}}
-			episode, err := findEpisodeInShowSeasons(h, seasons)
+			}})
 			if err == nil {
-				return episode, episodeCount(seasons, episode.Season), nil
+				return episode, nil
 			}
 		}
 
 		seasons, err := c.traktClient.GetShowSeasons(ctx, showID, true)
 		if err != nil {
-			return nil, 0, fmt.Errorf("getting Trakt show seasons (show=%q, activity=%s): %w", h.Title, h.String(), err)
+			return nil, fmt.Errorf("getting Trakt show seasons (show=%q, activity=%s): %w", h.Title, h.String(), err)
 		}
 
 		episode, err := findEpisodeInShowSeasons(h, seasons)
 		if err == nil {
-			return episode, episodeCount(seasons, episode.Season), nil
+			return episode, nil
 		}
 		lastMatchErr = err
 	}
 
-	return nil, 0, lastMatchErr
-}
-
-// episodeCount returns the highest episode number Trakt lists for a season,
-// or 0 when the season is unknown. Highest-number rather than len() because a
-// partially populated season would otherwise under-count and make a
-// mid-season episode look like the finale.
-func episodeCount(seasons []trakt.Season, seasonNumber int) int {
-	for i := range seasons {
-		if seasons[i].Number != seasonNumber {
-			continue
-		}
-		maxNum := 0
-		for j := range seasons[i].Episodes {
-			if n := seasons[i].Episodes[j].Number; n > maxNum {
-				maxNum = n
-			}
-		}
-		return maxNum
-	}
-	return 0
+	return nil, lastMatchErr
 }
 
 func findEpisodeInShowSeasons(h *netflix.WatchActivity, seasons []trakt.Season) (*trakt.Episode, error) {

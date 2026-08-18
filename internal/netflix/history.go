@@ -15,10 +15,6 @@ import (
 type History struct {
 	ItemsSearch map[string]struct{} `json:"search"`
 	Items       []string            `json:"items"`
-	// Pending holds episodes seen on Netflix but deliberately not reported
-	// yet, because nothing has superseded them. Persisted so a hold survives
-	// restarts - losing it would release everything on the next tick.
-	Pending     []Pending        `json:"pending"`
 	NewActivity []*WatchActivity `json:"-"`
 }
 
@@ -28,7 +24,6 @@ func NewHistory() (*History, error) {
 	h := &History{
 		ItemsSearch: make(map[string]struct{}),
 		Items:       []string{},
-		Pending:     []Pending{},
 		NewActivity: []*WatchActivity{},
 	}
 	err := h.Load()

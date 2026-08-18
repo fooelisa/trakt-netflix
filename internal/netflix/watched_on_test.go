@@ -56,32 +56,3 @@ func TestWatchedAtFallsBackWhenDateUnusable(t *testing.T) {
 	_, fromNetflix = bad.WatchedAt()
 	assert.False(t, fromNetflix, "an unparseable date must be reported, not silently stamped as now")
 }
-
-func TestPendingHoldAndRelease(t *testing.T) {
-	t.Parallel()
-
-	const (
-		heldItem  = `Poland: Season 3: "Wild Temptations"`
-		otherItem = `Argentina: Season 2: "Somebody to Love"`
-	)
-
-	h := &History{ //nolint:exhaustruct // Hold only touches Pending
-		Pending: []Pending{},
-	}
-	h.Hold(heldItem, "8/18/26")
-	h.Hold(heldItem, "8/18/26") // idempotent
-	require.Len(t, h.Pending, 1)
-	assert.True(t, h.HasPending(heldItem))
-
-	h.Hold(otherItem, "8/17/26")
-	require.Len(t, h.Pending, 2)
-
-	h.ReleasePending(map[string]struct{}{heldItem: {}})
-	require.Len(t, h.Pending, 1)
-	assert.False(t, h.HasPending(heldItem))
-	assert.True(t, h.HasPending(otherItem), "releasing one item must not release the rest")
-
-	// Releasing nothing must not wipe the set.
-	h.ReleasePending(nil)
-	assert.Len(t, h.Pending, 1)
-}
