@@ -284,15 +284,12 @@ var typographicQuotes = strings.NewReplacer(
 //
 // There are a ton of other edge cases we need to account for.
 func stringMatches(netflixTitle, traktTitle string) bool {
-	// Netflix titles sometimes use "..." to indicate a longer title.
-	titleIsPartial := strings.HasSuffix(netflixTitle, "...") && !strings.HasSuffix(traktTitle, "...")
-
 	// Curly vs straight quotes are the single most common mismatch after
 	// accents, so normalize them before any comparison.
 	netflixTitle = typographicQuotes.Replace(netflixTitle)
 	traktTitle = typographicQuotes.Replace(traktTitle)
 
-	if areEqual(netflixTitle, traktTitle, titleIsPartial) {
+	if areEqual(netflixTitle, traktTitle) {
 		return true
 	}
 
@@ -305,7 +302,7 @@ func stringMatches(netflixTitle, traktTitle string) bool {
 	if err != nil {
 		return false
 	}
-	if areEqual(netflixTitle, traktTitle, titleIsPartial) {
+	if areEqual(netflixTitle, traktTitle) {
 		return true
 	}
 
@@ -356,16 +353,40 @@ func stringMatches(netflixTitle, traktTitle string) bool {
 	netflixTitle = strings.ReplaceAll(netflixTitle, " ", "-")
 	traktTitle = strings.ReplaceAll(traktTitle, " ", "-")
 
-	return areEqual(netflixTitle, traktTitle, titleIsPartial)
+	return areEqual(netflixTitle, traktTitle)
 }
 
-func areEqual(a, b string, titleIsPartial bool) bool {
-	if titleIsPartial {
-		// If the title is partial, we need to account for that in our comparison
-		if len(a) < 3 {
-			return false
-		}
-		return strings.HasPrefix(b, a[:len(a)-3])
+func areEqual(a, b string) bool {
+	if prefix, full, ok := truncatedPair(a, b); ok {
+		return strings.HasPrefix(strings.ToLower(full), strings.ToLower(prefix))
 	}
 	return strings.EqualFold(a, b)
+}
+
+// truncatedPair spots Netflix's "..." truncation on EITHER side, returning
+// the shortened title and the full one to compare it against.
+//
+// Every caller of stringMatches passes (traktTitle, netflixTitle) even though
+// the parameters are named the other way round, so which side carries the
+// "..." cannot be assumed. Checking only one side meant the truncation
+// handling never fired in practice:
+//
+//	Netflix: "I Want To Know If I Can Trust You With..."
+//	Trakt:   "I Want To Know If I Can Trust You With My Daughter"
+//
+// A title that is nothing but dots carries no signal, so it is rejected.
+func truncatedPair(a, b string) (prefix, full string, ok bool) {
+	aTruncated := strings.HasSuffix(a, "...")
+	bTruncated := strings.HasSuffix(b, "...")
+
+	switch {
+	case aTruncated && !bTruncated:
+		prefix = strings.TrimSuffix(a, "...")
+		return prefix, b, prefix != ""
+	case bTruncated && !aTruncated:
+		prefix = strings.TrimSuffix(b, "...")
+		return prefix, a, prefix != ""
+	default:
+		return "", "", false
+	}
 }

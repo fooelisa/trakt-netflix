@@ -390,6 +390,33 @@ func TestStringMatches(t *testing.T) {
 			shouldMatch: false,
 		},
 		{
+			// Regression: every caller passes (trakt, netflix) although the
+			// parameters are named the other way round, so the "..." must be
+			// detected on whichever side carries it.
+			name:        "Netflix truncation, trakt title first",
+			netflix:     "I Want To Know If I Can Trust You With My Daughter",
+			trakt:       "I Want To Know If I Can Trust You With...",
+			shouldMatch: true,
+		},
+		{
+			name:        "Netflix truncation, netflix title first",
+			netflix:     "I Want To Know If I Can Trust You With...",
+			trakt:       "I Want To Know If I Can Trust You With My Daughter",
+			shouldMatch: true,
+		},
+		{
+			name:        "Truncated title must still not match a different episode",
+			netflix:     "I Want To Know If I Can Trust You With...",
+			trakt:       "Breakups Are Never Easy",
+			shouldMatch: false,
+		},
+		{
+			name:        "A title of only dots carries no signal",
+			netflix:     "...",
+			trakt:       "Breakups Are Never Easy",
+			shouldMatch: false,
+		},
+		{
 			name:        "Accent",
 			netflix:     "Arrested Development: Beef Consomme",
 			trakt:       "Arrested Development: Beef Consommé",
