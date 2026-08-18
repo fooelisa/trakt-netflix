@@ -14,13 +14,13 @@ func TestParseNetflixDate(t *testing.T) {
 		name     string
 		raw      string
 		wantOK   bool
-		wantDate string // YYYY-MM-DD
+		wantDate string // YYYY-MM-DD, empty when wantOK is false
 	}{
 		{name: "en-US short year", raw: "8/18/26", wantOK: true, wantDate: "2026-08-18"},
 		{name: "padded day", raw: "7/07/26", wantOK: true, wantDate: "2026-07-07"},
 		{name: "ISO", raw: "2026-06-18", wantOK: true, wantDate: "2026-06-18"},
-		{name: "empty is not a date", raw: "", wantOK: false},
-		{name: "garbage is not a date", raw: "yesterday", wantOK: false},
+		{name: "empty is not a date", raw: "", wantOK: false, wantDate: ""},
+		{name: "garbage is not a date", raw: "yesterday", wantOK: false, wantDate: ""},
 	}
 
 	for _, tc := range testCases {
@@ -43,12 +43,16 @@ func TestParseNetflixDate(t *testing.T) {
 func TestWatchedAtFallsBackWhenDateUnusable(t *testing.T) {
 	t.Parallel()
 
-	good := &WatchActivity{Date: "8/18/26"}
+	good := &WatchActivity{ //nolint:exhaustruct // only the date drives WatchedAt
+		Date: "8/18/26",
+	}
 	ts, fromNetflix := good.WatchedAt()
 	require.True(t, fromNetflix)
 	assert.Contains(t, ts, "2026-08-18")
 
-	bad := &WatchActivity{Date: ""}
+	bad := &WatchActivity{ //nolint:exhaustruct // only the date drives WatchedAt
+		Date: "",
+	}
 	_, fromNetflix = bad.WatchedAt()
 	assert.False(t, fromNetflix, "an unparseable date must be reported, not silently stamped as now")
 }
@@ -56,21 +60,28 @@ func TestWatchedAtFallsBackWhenDateUnusable(t *testing.T) {
 func TestPendingHoldAndRelease(t *testing.T) {
 	t.Parallel()
 
-	h := &History{}
-	h.Hold("Show: Show: \"Ep 3\"", "8/18/26")
-	h.Hold("Show: Show: \"Ep 3\"", "8/18/26") // idempotent
-	require.Len(t, h.Pending, 1)
-	assert.True(t, h.HasPending("Show: Show: \"Ep 3\""))
+	const (
+		heldItem  = `Poland: Season 3: "Wild Temptations"`
+		otherItem = `Argentina: Season 2: "Somebody to Love"`
+	)
 
-	h.Hold("Other: Other: \"Ep 1\"", "8/17/26")
+	h := &History{ //nolint:exhaustruct // Hold only touches Pending
+		Pending: []Pending{},
+	}
+	h.Hold(heldItem, "8/18/26")
+	h.Hold(heldItem, "8/18/26") // idempotent
+	require.Len(t, h.Pending, 1)
+	assert.True(t, h.HasPending(heldItem))
+
+	h.Hold(otherItem, "8/17/26")
 	require.Len(t, h.Pending, 2)
 
-	h.ReleasePending(map[string]struct{}{"Show: Show: \"Ep 3\"": {}})
+	h.ReleasePending(map[string]struct{}{heldItem: {}})
 	require.Len(t, h.Pending, 1)
-	assert.False(t, h.HasPending("Show: Show: \"Ep 3\""))
-	assert.True(t, h.HasPending("Other: Other: \"Ep 1\""))
+	assert.False(t, h.HasPending(heldItem))
+	assert.True(t, h.HasPending(otherItem), "releasing one item must not release the rest")
 
-	// releasing nothing must not wipe the set
+	// Releasing nothing must not wipe the set.
 	h.ReleasePending(nil)
 	assert.Len(t, h.Pending, 1)
 }

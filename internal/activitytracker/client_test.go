@@ -37,6 +37,7 @@ func TestFetchHistory(t *testing.T) {
 		History: &netflix.History{
 			ItemsSearch: make(map[string]struct{}),
 			Items:       []string{},
+			Pending:     []netflix.Pending{},
 			NewActivity: []*netflix.WatchActivity{},
 		},
 		Cookie:           "cookie",
@@ -139,6 +140,7 @@ func TestFetchHistoryWithExistingData(t *testing.T) {
 	show1 := `Scott Pilgrim Takes Off: Scott Pilgrim Takes Off: "Whatever"`
 	show2 := `Ali Wong: Hard Knock Wife`
 	history := &netflix.History{
+		Pending: []netflix.Pending{},
 		Items: []string{
 			show1,
 			show2,

@@ -9,11 +9,27 @@ import (
 )
 
 func season(number int, episodeNumbers ...int) trakt.Season {
-	s := trakt.Season{Number: number}
+	s := trakt.Season{ //nolint:exhaustruct // only the numbering matters here
+		Number: number,
+	}
 	for _, n := range episodeNumbers {
-		s.Episodes = append(s.Episodes, trakt.Episode{Season: number, Number: n})
+		s.Episodes = append(s.Episodes, trakt.Episode{ //nolint:exhaustruct // only the numbering matters here
+			Season: number,
+			Number: n,
+		})
 	}
 	return s
+}
+
+func showItem(title string, seasonNum, number, seasonEpisodeCount int) resolved {
+	return resolved{
+		activity:           &netflix.WatchActivity{Title: title, EpisodeName: "", IsShow: true, Season: seasonNum, Date: ""},
+		isShow:             true,
+		ids:                trakt.IDs{Trakt: 0, Slug: nil, IMDB: nil, TMDB: nil, TVDB: nil},
+		season:             seasonNum,
+		number:             number,
+		seasonEpisodeCount: seasonEpisodeCount,
+	}
 }
 
 func TestEpisodeCount(t *testing.T) {
@@ -43,17 +59,17 @@ func TestIsFinale(t *testing.T) {
 	}{
 		{
 			name: "last episode of the season",
-			item: resolved{isShow: true, season: 3, number: 8, seasonEpisodeCount: 8},
+			item: showItem("Love Never Lies", 3, 8, 8),
 			want: true,
 		},
 		{
 			name: "mid season",
-			item: resolved{isShow: true, season: 3, number: 7, seasonEpisodeCount: 8},
+			item: showItem("Love Never Lies", 3, 7, 8),
 			want: false,
 		},
 		{
 			name: "unknown episode count must not be treated as a finale",
-			item: resolved{isShow: true, season: 3, number: 8, seasonEpisodeCount: 0},
+			item: showItem("Love Never Lies", 3, 8, 0),
 			want: false,
 		},
 	}
@@ -69,11 +85,13 @@ func TestIsFinale(t *testing.T) {
 func TestSeasonKeySeparatesShowsAndSeasons(t *testing.T) {
 	t.Parallel()
 
-	a := resolved{activity: &netflix.WatchActivity{Title: "Love Never Lies: Poland"}, season: 3}
-	b := resolved{activity: &netflix.WatchActivity{Title: "Love Never Lies: Poland"}, season: 2}
-	c := resolved{activity: &netflix.WatchActivity{Title: "Love Never Lies"}, season: 3}
+	polandS3 := showItem("Love Never Lies: Poland", 3, 1, 8)
+	polandS2 := showItem("Love Never Lies: Poland", 2, 1, 8)
+	otherS3 := showItem("Love Never Lies", 3, 1, 8)
 
-	assert.NotEqual(t, seasonKey(&a), seasonKey(&b), "different seasons must not share a key")
-	assert.NotEqual(t, seasonKey(&a), seasonKey(&c), "different shows must not share a key")
-	assert.Equal(t, seasonKey(&a), seasonKey(&a))
+	assert.NotEqual(t, seasonKey(&polandS3), seasonKey(&polandS2), "different seasons must not share a key")
+	assert.NotEqual(t, seasonKey(&polandS3), seasonKey(&otherS3), "different shows must not share a key")
+
+	same := showItem("Love Never Lies: Poland", 3, 4, 8)
+	assert.Equal(t, seasonKey(&polandS3), seasonKey(&same), "same show and season must share a key regardless of episode")
 }

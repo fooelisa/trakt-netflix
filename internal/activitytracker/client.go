@@ -218,7 +218,10 @@ func (c *Client) searchMedia(ctx context.Context, h *netflix.WatchActivity) (*re
 	for i := range response.Results {
 		r := &response.Results[i]
 		if r.Type == trakt.SearchTypeMovie && stringMatches(r.Movie.Title, h.Title) {
-			return &resolved{activity: h, isShow: false, ids: r.Movie.IDs}, nil
+			return &resolved{
+				activity: h, isShow: false, ids: r.Movie.IDs,
+				season: 0, number: 0, seasonEpisodeCount: 0,
+			}, nil
 		}
 	}
 	return nil, errors.New("not found")
