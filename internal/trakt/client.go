@@ -302,7 +302,7 @@ func (c *Client) GetAccessToken(ctx context.Context, deviceCode string) (*GetAcc
 	// https://trakt.docs.apiary.io/#reference/authentication-devices/get-token/poll-for-the-access_token
 	resp, body, err := c.post(ctx, "/oauth/device/token", &GetAccessTokenRequest{ //nolint:bodyclose // the body is closed in _request
 		ClientID:     c.clientID,
-		ClientSecret: c.clientSecret.Get(),
+		ClientSecret: c.clientSecret.GetOrEmpty(),
 		DeviceCode:   deviceCode,
 	}, withNoAuth())
 	if err != nil {
@@ -391,7 +391,7 @@ func (c *Client) EnsureFreshToken(ctx context.Context) error {
 func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (*RefreshTokenResponse, error) {
 	resp, body, err := c.post(ctx, "/oauth/token", &RefreshTokenRequest{ //nolint:bodyclose // the body is closed in _request
 		ClientID:     c.clientID,
-		ClientSecret: c.clientSecret.Get(),
+		ClientSecret: c.clientSecret.GetOrEmpty(),
 		RedirectURI:  c.redirectURI,
 		GrantType:    "refresh_token",
 		RefreshToken: refreshToken,

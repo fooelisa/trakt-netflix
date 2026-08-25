@@ -37,6 +37,18 @@ func (s Secret) Get() string {
 	return *s.secret
 }
 
+// GetOrEmpty returns the secret, or an empty string when it was never set.
+//
+// Get panics on an unset secret, which is the right behaviour for values that
+// must be present. Some are legitimately optional: an OAuth PUBLIC client
+// authenticates with no client secret at all, and must send an empty one.
+func (s Secret) GetOrEmpty() string {
+	if s.secret == nil {
+		return ""
+	}
+	return *s.secret
+}
+
 // EnvDecode implements the envconfig.Decoder interface
 func (s *Secret) EnvDecode(val string) error {
 	s.secret = &val
