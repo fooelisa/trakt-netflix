@@ -42,6 +42,14 @@ func New(traktClient *trakt.Client, netflixClient *netflix.Client, slackClient *
 // Run fetches the viewing history from Netflix and marks it as
 // watched on Trakt
 func (c *Client) Run(ctx context.Context) error {
+	// Renew the Trakt token before doing anything else. Refresh is otherwise
+	// only triggered by a 401 on a real request, and requests only happen when
+	// there is something to report - so a quiet week lets the token expire and
+	// stay expired. Not fatal: the reactive path still exists.
+	if err := c.traktClient.EnsureFreshToken(ctx); err != nil {
+		slog.ErrorContext(ctx, "could not refresh the Trakt token", "error", err.Error())
+	}
+
 	if err := c.UpdateHistory(ctx); err != nil {
 		return err
 	}

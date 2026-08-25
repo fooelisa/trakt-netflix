@@ -346,6 +346,45 @@ type RefreshTokenResponse struct {
 	AccessTokenInfo
 }
 
+// tokenRefreshMargin is how long before expiry the access token is renewed
+// proactively. The token lives 7 days, so a 24h margin means a healthy
+// service renews roughly weekly with a full day of slack.
+const tokenRefreshMargin = 24 * time.Hour
+
+// needsRefresh reports whether a token created at createdAt and living
+// expiresIn seconds should be renewed now.
+func needsRefresh(createdAt int64, expiresIn int, now time.Time) bool {
+	if createdAt == 0 || expiresIn == 0 {
+		return false
+	}
+	expiresAt := time.Unix(createdAt+int64(expiresIn), 0)
+	return !now.Add(tokenRefreshMargin).Before(expiresAt)
+}
+
+// EnsureFreshToken renews the access token when it is close to expiry.
+//
+// The only other refresh path is reactive: a 401 inside the request retry
+// loop. But a request is only made when there is something to report, so a
+// quiet week with no new Netflix activity means no request, no 401, and no
+// refresh - the token expires and stays expired. Left long enough the refresh
+// token goes with it and the whole chain has to be re-seeded by hand.
+//
+// A failure here is not fatal: the reactive path is still there, and the
+// caller logs it. Refresh tokens rotate on use, and RefreshToken persists the
+// new pair, so this must not be called concurrently.
+func (c *Client) EnsureFreshToken(ctx context.Context) error {
+	if !c.IsAuthenticated() {
+		return nil
+	}
+	if !needsRefresh(c.auth.CreatedAt, c.auth.ExpiresIn, time.Now()) {
+		return nil
+	}
+	if _, err := c.RefreshToken(ctx, c.auth.RefreshToken.Get()); err != nil {
+		return fmt.Errorf("proactively refresh the access token: %w", err)
+	}
+	return nil
+}
+
 // RefreshToken refreshes the access token using the refresh token.
 // Once refreshed, the access token is automatically written to the
 // auth file on disk.
