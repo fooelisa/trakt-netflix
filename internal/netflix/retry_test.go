@@ -2,6 +2,7 @@ package netflix
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -47,8 +48,9 @@ func TestMarkSeenIsIdempotentAndBounded(t *testing.T) {
 	h.MarkSeen("a")
 	assert.Len(t, h.Items, 1, "marking twice must not duplicate")
 
-	for i := range HistorySize + 5 {
-		h.MarkSeen(string(rune('A' + i%26)) + string(rune('0'+i/26)))
+	overfill := HistorySize + 5
+	for i := range overfill {
+		h.MarkSeen(fmt.Sprintf("item-%d", i))
 	}
 	assert.LessOrEqual(t, len(h.Items), HistorySize, "the ledger must stay bounded")
 	assert.Len(t, h.ItemsSearch, len(h.Items), "index and list must stay in step")

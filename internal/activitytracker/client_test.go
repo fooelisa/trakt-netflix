@@ -127,8 +127,10 @@ func TestFetchHistory(t *testing.T) {
 			assert.Equal(t, tc.name, h[i].Title)
 			assert.Equal(t, tc.isShow, h[i].IsShow)
 
-			item := history.Items
-			assert.Equal(t, tc.entry, item[i])
+			// Items is now the ledger of items Trakt has ACCEPTED, populated
+			// by MarkSeen rather than by Push, so the raw activity string is
+			// checked on the parsed activity instead.
+			assert.Equal(t, tc.entry, h[i].Raw)
 		})
 	}
 }
