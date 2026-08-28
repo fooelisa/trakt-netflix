@@ -46,6 +46,31 @@ func (h *History) Push(ctx context.Context, item, watchedOn string, r o11y.Repor
 		return
 	}
 
+	// Deliberately NOT marked as seen here - see MarkSeen. An item that fails
+	// to match on Trakt must come back on the next run.
+	activity := ParseTitle(ctx, item, r)
+	activity.Raw = item
+	activity.Date = watchedOn
+	h.NewActivity = append(h.NewActivity, activity)
+}
+
+// MarkSeen records an item as fully processed so it is not reported again.
+//
+// This is called only after Trakt has ACCEPTED the item. Marking on sight
+// instead would make any match failure permanent: Trakt's episode data
+// routinely lags Netflix by a day for a currently-airing season, so the first
+// poll after watching is both the most likely to fail and - if we marked it
+// here - the only one that would ever be attempted.
+//
+// Unmatched items are therefore retried every run. That is self-limiting
+// rather than unbounded: the scraper only reads the first page of the viewing
+// activity, so a permanently unmatchable row stops being retried once
+// HistorySize newer rows have pushed it off the page.
+func (h *History) MarkSeen(item string) {
+	if h.Has(item) {
+		return
+	}
+
 	if len(h.Items) >= HistorySize {
 		delete(h.ItemsSearch, h.Items[0])
 		h.Items = h.Items[1:]
@@ -53,10 +78,6 @@ func (h *History) Push(ctx context.Context, item, watchedOn string, r o11y.Repor
 
 	h.Items = append(h.Items, item)
 	h.ItemsSearch[item] = struct{}{}
-	activity := ParseTitle(ctx, item, r)
-	activity.Raw = item
-	activity.Date = watchedOn
-	h.NewActivity = append(h.NewActivity, activity)
 }
 
 // Write saves the history to disk.

@@ -88,13 +88,15 @@ type resolved struct {
 // break silently on any Netflix deploy.
 func (c *Client) MarkAsWatched(ctx context.Context) {
 	medias := new(trakt.MarkAsWatchedRequest)
-	reported := 0
+	reported := make([]string, 0, len(c.netflixClient.History.NewActivity))
+	failed := 0
 
 	for _, h := range c.netflixClient.History.NewActivity {
 		r, err := c.searchMedia(ctx, h)
 		if err != nil {
 			c.slackClient.SendMessage(ctx, "Trakt: Couldn't find: "+h.String()+"\nError: "+err.Error()+"\nPlease add manually.")
 			slog.ErrorContext(ctx, "media search failed", "isShow", h.IsShow, "media", h.String(), "error", err.Error())
+			failed++
 			continue
 		}
 
@@ -109,14 +111,17 @@ func (c *Client) MarkAsWatched(ctx context.Context) {
 		} else {
 			medias.Movies = append(medias.Movies, m)
 		}
-		reported++
+		reported = append(reported, h.Raw)
 		c.slackClient.SendMessage(ctx, "Adding to current watchlist batch: "+h.String())
 
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	slog.InfoContext(ctx, "batch built", "reporting", reported)
-	if reported == 0 {
+	// Unmatched items are intentionally left unmarked so the next run tries
+	// again - Trakt's data for a currently-airing season often catches up
+	// within a day.
+	slog.InfoContext(ctx, "batch built", "reporting", len(reported), "willRetry", failed)
+	if len(reported) == 0 {
 		c.netflixClient.History.ClearNewActivity()
 		return
 	}
@@ -125,6 +130,12 @@ func (c *Client) MarkAsWatched(ctx context.Context) {
 		c.slackClient.SendMessage(ctx, "Trakt: Couldn't mark the batch as watched. Error: "+err.Error())
 		slog.ErrorContext(ctx, "failed to watch", "error", err.Error(), "medias", medias)
 		return
+	}
+
+	// Only now are these items done with. Marking earlier would make a match
+	// failure permanent.
+	for _, raw := range reported {
+		c.netflixClient.History.MarkSeen(raw)
 	}
 
 	c.slackClient.SendMessage(ctx, "Batch processed successfully")
@@ -156,7 +167,38 @@ func (c *Client) searchMedia(ctx context.Context, h *netflix.WatchActivity) (*re
 			return &resolved{activity: h, isShow: false, ids: r.Movie.IDs}, nil
 		}
 	}
+
+	// ParseTitle decides "show or movie" by whether the activity string
+	// contains a quoted episode name, but Netflix does not always include one:
+	//
+	//	Let's Marry Harry: The Reunion
+	//
+	// which is an episode, not a film. Rather than complicate that heuristic,
+	// fall back to an episode search before giving up. Only reached when the
+	// movie search already found nothing, so it costs nothing in the common
+	// case.
+	if episode, err := c.findEpisode(ctx, asShow(h)); err == nil {
+		return &resolved{activity: h, isShow: true, ids: episode.IDs}, nil
+	}
+
 	return nil, errors.New("not found")
+}
+
+// asShow reinterprets an activity that ParseTitle read as a movie, splitting
+// "<Show>: <Episode>" on the last colon.
+func asShow(h *netflix.WatchActivity) *netflix.WatchActivity {
+	show, episode := h.Title, ""
+	if idx := strings.LastIndex(h.Title, ": "); idx > 0 {
+		show, episode = h.Title[:idx], h.Title[idx+2:]
+	}
+	return &netflix.WatchActivity{
+		Raw:         h.Raw,
+		Date:        h.Date,
+		Title:       show,
+		EpisodeName: episode,
+		IsShow:      true,
+		Season:      0,
+	}
 }
 
 // findEpisode maps a Netflix episode onto a Trakt one.
